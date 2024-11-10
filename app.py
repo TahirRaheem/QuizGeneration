@@ -2,13 +2,21 @@ import streamlit as st
 from transformers import pipeline
 import nltk
 import random
+import os
 from nltk.data import find
 
-# Download required NLTK data if not present
+# Set NLTK data path if required
+nltk_data_path = os.path.expanduser('~/nltk_data')
+if not os.path.exists(nltk_data_path):
+    os.makedirs(nltk_data_path)
+
+nltk.data.path.append(nltk_data_path)
+
+# Download 'punkt' tokenizer if not present
 try:
     find('tokenizers/punkt')
 except LookupError:
-    nltk.download('punkt')
+    nltk.download('punkt', download_dir=nltk_data_path)
 
 # Load QA Pipeline
 qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
@@ -20,46 +28,33 @@ def generate_simple_question(context):
 # Function to Generate Multiple Choice Options
 def generate_options(question, answer, text):
     options = [answer]
-
-    # Split text into sentences for distractors
     sentences = nltk.sent_tokenize(text)
-    for sentence in sentences[:5]:  # Get a few sentences for distractors
+    for sentence in sentences[:5]:
         result = qa_pipeline(question=question, context=sentence)
         if result["answer"] != answer:
             options.append(result["answer"])
-        if len(options) >= 4:  # Limit to 4 options
+        if len(options) >= 4:
             break
-
-    # Ensure there are exactly 4 options
-    options = list(set(options))  # Remove duplicates
+    options = list(set(options))
     while len(options) < 4:
-        options.append("Random Distractor")  # Add random distractor
+        options.append("Random Distractor")
     random.shuffle(options)
     return options
 
 # Main Function to Generate Quiz
 def generate_quiz(text):
-    sentences = nltk.sent_tokenize(text)  # Split the paragraph into sentences
+    sentences = nltk.sent_tokenize(text)
     quiz = []
-
     for sentence in sentences:
-        # Generate a question based on the sentence
         question = generate_simple_question(sentence)
-
-        # Use QA to get the correct answer
         result = qa_pipeline(question="What is the main point?", context=sentence)
         answer = result["answer"]
-
-        # Generate multiple choice options
         options = generate_options(question, answer, text)
-
-        # Store the question and options
         quiz.append({
             "question": question,
             "answer": answer,
             "options": options
         })
-
     return quiz
 
 # Streamlit app layout
