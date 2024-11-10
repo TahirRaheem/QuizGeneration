@@ -1,3 +1,8 @@
+import nltk
+
+# Downloading the 'punkt' tokenizer
+nltk.download('punkt')
+
 import streamlit as st
 from transformers import pipeline
 import nltk
