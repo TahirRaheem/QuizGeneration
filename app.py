@@ -2,9 +2,13 @@ import streamlit as st
 from transformers import pipeline
 import nltk
 import random
+from nltk.data import find
 
-# Download required NLTK data
-nltk.download('punkt')
+# Download required NLTK data if not present
+try:
+    find('tokenizers/punkt')
+except LookupError:
+    nltk.download('punkt')
 
 # Load QA Pipeline
 qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
