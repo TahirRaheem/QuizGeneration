@@ -1,82 +1,63 @@
-import nltk
-
-# Downloading the 'punkt' tokenizer
-nltk.download('punkt')
-
 import streamlit as st
-from transformers import pipeline
-import nltk
-import random
-import os
-from nltk.data import find
+from transformers import BertTokenizer, pipeline, T5ForConditionalGeneration, T5Tokenizer
 
-# Set NLTK data path if required
-nltk_data_path = os.path.expanduser('~/nltk_data')
-if not os.path.exists(nltk_data_path):
-    os.makedirs(nltk_data_path)
+# Load the tokenizer and model
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+qa_pipeline = pipeline("question-answering", model="deepset/roberta-base-squad2")
+summarization_pipeline = pipeline("summarization", model="facebook/bart-large-cnn")
 
-nltk.data.path.append(nltk_data_path)
+# Function to split text into sentences
+def split_text_into_sentences(text):
+    tokens = tokenizer.tokenize(text)
+    sentence = ""
+    sentences = []
+    for token in tokens:
+        sentence += token + " "
+        if token == '.':
+            sentences.append(sentence.strip())
+            sentence = ""
+    if sentence:  # Add any remaining text as the last sentence
+        sentences.append(sentence.strip())
+    return sentences
 
-# Download 'punkt' tokenizer if not present
-try:
-    find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt', download_dir=nltk_data_path)
-
-# Load QA Pipeline
-qa_pipeline = pipeline("question-answering", model="distilbert-base-uncased-distilled-squad")
-
-# Function to Generate a Simple Question
-def generate_simple_question(context):
-    return f"What is the main point of: {context}?"
-
-# Function to Generate Multiple Choice Options
-def generate_options(question, answer, text):
-    options = [answer]
-    sentences = nltk.sent_tokenize(text)
-    for sentence in sentences[:5]:
-        result = qa_pipeline(question=question, context=sentence)
-        if result["answer"] != answer:
-            options.append(result["answer"])
-        if len(options) >= 4:
-            break
-    options = list(set(options))
-    while len(options) < 4:
-        options.append("Random Distractor")
-    random.shuffle(options)
-    return options
-
-# Main Function to Generate Quiz
+# Function to generate quiz questions
 def generate_quiz(text):
-    sentences = nltk.sent_tokenize(text)
-    quiz = []
+    sentences = split_text_into_sentences(text)
+    questions_answers = []
+
     for sentence in sentences:
-        question = generate_simple_question(sentence)
-        result = qa_pipeline(question="What is the main point?", context=sentence)
-        answer = result["answer"]
-        options = generate_options(question, answer, text)
-        quiz.append({
-            "question": question,
-            "answer": answer,
-            "options": options
-        })
-    return quiz
+        try:
+            # Summarize each sentence for possible answers
+            summarized_text = summarization_pipeline(sentence)[0]['summary_text']
+            
+            # Generate a question from the summarized text
+            question_answer = qa_pipeline({
+                'question': "What is the main idea of this sentence?",
+                'context': sentence
+            })
 
-# Streamlit app layout
+            # Store the question and answer
+            question = question_answer['question']
+            answer = question_answer['answer']
+            
+            # Generate multiple-choice options
+            options = [answer, summarized_text, "None of the above", "Not sure"]
+            questions_answers.append((question, options, answer))
+        except Exception as e:
+            print(f"Error processing sentence: {sentence}")
+            print(e)
+
+    return questions_answers
+
+# Streamlit Interface
 st.title("AI-Based Quiz Generator")
-st.write("Enter a paragraph below to generate a quiz.")
+input_text = st.text_area("Enter text for quiz generation", "Artificial Intelligence (AI) is transforming industries...")
 
-# User input section
-input_text = st.text_area("Input your text", height=200)
-
-# Generate quiz when user inputs text
-if st.button('Generate Quiz'):
-    if input_text:
-        quiz = generate_quiz(input_text)
-        for i, qa in enumerate(quiz):
-            st.write(f"**Question {i+1}:** {qa['question']}")
-            for idx, option in enumerate(qa['options']):
-                st.write(f"  {chr(97 + idx)}) {option}")
-            st.write(f"**Answer:** {qa['answer']}")
-    else:
-        st.warning("Please enter a paragraph.")
+if st.button("Generate Quiz"):
+    quiz = generate_quiz(input_text)
+    for idx, (question, options, answer) in enumerate(quiz, 1):
+        st.write(f"**Question {idx}:** {question}")
+        for i, option in enumerate(options):
+            st.write(f"  {chr(65 + i)}) {option}")
+        st.write(f"**Answer:** {answer}")
+        st.write("---")
